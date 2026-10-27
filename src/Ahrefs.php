@@ -37,7 +37,7 @@ class Ahrefs implements Driver
 
     public function volume(array $keywords, ?string $country = null): array
     {
-        $keywords = array_values(array_unique(array_filter(array_map(fn($keyword) => $this->normalize($keyword), $keywords), fn($keyword) => $keyword !== '')));
+        $keywords = Keyword::unique($keywords);
         // keywords are passed as comma separated list
         $valid = array_filter($keywords, fn($keyword) => !str_contains($keyword, ','));
         $volumes = [];
@@ -46,7 +46,7 @@ class Ahrefs implements Driver
             $data = $this->request('overview', ['keywords' => implode(',', $chunk), 'limit' => count($chunk)], $country);
 
             foreach ($data['keywords'] ?? [] as $result) {
-                $volumes[$this->normalize($result['keyword'] ?? '')] ??= $this->value($result, $country);
+                $volumes[Keyword::normalize($result['keyword'] ?? '')] ??= $this->value($result, $country);
             }
         }
 
@@ -56,7 +56,7 @@ class Ahrefs implements Driver
 
     public function related(string $keyword, ?string $country = null, int $limit = 50): array
     {
-        if (($keyword = $this->normalize($keyword)) === '' || str_contains($keyword, ',')) {
+        if (($keyword = Keyword::normalize($keyword)) === '' || str_contains($keyword, ',')) {
             return [];
         }
 
@@ -66,7 +66,14 @@ class Ahrefs implements Driver
             'order_by' => ($country === null ? 'global_volume' : 'volume') . ':desc',
         ], $country);
 
-        return array_map(fn($result) => new Keyword($this->normalize($result['keyword'] ?? ''), $this->value($result, $country)), $data['keywords'] ?? []);
+        $list = [];
+
+        foreach ($data['keywords'] ?? [] as $result) {
+            $text = Keyword::normalize($result['keyword'] ?? '');
+            $list[$text] ??= new Keyword($text, $this->value($result, $country));
+        }
+
+        return array_values($list);
     }
 
 
@@ -77,19 +84,7 @@ class Ahrefs implements Driver
      */
     protected function client(): PendingRequest
     {
-        return Http::withToken($this->config['key'])->acceptJson()->timeout($this->config['timeout'] ?? 30);
-    }
-
-
-    /**
-     * Normalizes the keyword
-     *
-     * @param string $keyword Keyword
-     * @return string Trimmed keyword in lower case with single spaces
-     */
-    protected function normalize(string $keyword): string
-    {
-        return mb_strtolower(trim((string) preg_replace('/\s+/u', ' ', $keyword)));
+        return Http::withToken($this->config['key'])->acceptJson()->withoutRedirecting()->timeout($this->config['timeout'] ?? 30);
     }
 
 
@@ -118,7 +113,7 @@ class Ahrefs implements Driver
             throw new \RuntimeException('Ahrefs API request failed: ' . $e->getMessage(), 0, $e);
         }
 
-        if ($response->failed()) {
+        if (!$response->successful()) {
             throw new \RuntimeException(sprintf('Ahrefs API request failed with HTTP status %d: %s',
                 $response->status(), $response->json('error', 'Unknown error')));
         }

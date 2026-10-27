@@ -102,6 +102,7 @@ class AhrefsTest extends TestCase
         Http::fake([self::URL . 'related-terms*' => Http::response(['keywords' => [
             ['keyword' => 'Laravel Admin Panel', 'volume' => 2400],
             ['keyword' => 'laravel headless cms', 'volume' => 320],
+            ['keyword' => 'laravel admin panel', 'volume' => 10],
             ['keyword' => 'laravel blog', 'volume' => null],
         ]])]);
 
@@ -176,6 +177,16 @@ class AhrefsTest extends TestCase
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('Ahrefs API request failed: Timeout');
+        Keywords::volume(['laravel cms']);
+    }
+
+
+    public function testRedirect(): void
+    {
+        Http::fake(fn() => Http::response('', 302, ['Location' => 'https://example.com/']));
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('HTTP status 302');
         Keywords::volume(['laravel cms']);
     }
 
